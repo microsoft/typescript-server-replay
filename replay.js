@@ -111,7 +111,7 @@ async function main() {
                     openFile.content = openFileContents;
                 }
             }
-            sawExit ||= request.command === "exit";
+            sawExit = sawExit || request.command === "exit";
             requests.push(request);
         }
         catch {
@@ -174,7 +174,7 @@ async function main() {
     });
 
     for (const request of requests) {
-        exitRequested ||= request.command === "exit";
+        exitRequested = exitRequested || request.command === "exit";
         if (!unattended) console.log(`${request.seq}\t${request.command}`);
         const response = await server.message(request);
         if (response && !response.success && response.message !== "No content available.") {
