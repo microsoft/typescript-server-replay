@@ -84,6 +84,11 @@ async function main() {
 
     rl.on('line', line => {
         try {
+            // Ignore blank lines
+            if (line.trim().length === 0) {
+                return;
+            }
+
             if (firstLine) {
                 const obj = JSON.parse(line);
                 if (!obj.command) {
