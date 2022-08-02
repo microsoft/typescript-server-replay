@@ -164,6 +164,15 @@ async function main() {
         }
     });
 
+    server.on("event", e => {
+        if (e.event === "projectLanguageServiceState" && !e.body.languageServiceEnabled) {
+            console.log(`Language service disabled for ${e.body.projectName ? path.normalize(e.body.projectName) : "unknown project"}`);
+            if (unattended) {
+                process.exit(-5);
+            }
+        }
+    });
+
     for (const request of requests) {
         exitRequested ||= request.command === "exit";
         if (!unattended) console.log(`${request.seq}\t${request.command}`);
