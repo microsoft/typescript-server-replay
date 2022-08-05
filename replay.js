@@ -164,10 +164,16 @@ async function main() {
         }
     });
 
-    server.on("event", e => {
+    server.on("event", async e => {
         if (e.event === "projectLanguageServiceState" && !e.body.languageServiceEnabled) {
             console.log(`Language service disabled for ${e.body.projectName ? path.normalize(e.body.projectName) : "unknown project"}`);
             if (unattended) {
+                try {
+                    await server.message(synthesizedExitRequest);
+                }
+                catch {
+                    // Ignore errors during shutdown
+                }
                 process.exit(4);
             }
         }
