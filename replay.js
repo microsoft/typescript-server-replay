@@ -63,7 +63,7 @@ process.chdir(testDir);
 
 main().catch(e => {
     console.log(e);
-    process.exit(-1);
+    process.exit(1);
 });
 
 async function main() {
@@ -117,7 +117,7 @@ async function main() {
         catch {
             console.log(`Bad input "${line}"`);
             if (unattended) {
-                process.exit(-2);
+                process.exit(2);
             }
         }
         finally {
@@ -160,7 +160,7 @@ async function main() {
             console.log(`${exitRequested ? "Shut down" :"Exited unexpectedly"}${code ? ` with code ${code}` : ""}`);
         }
         if (unattended) {
-            process.exit(-3);
+            process.exit(3);
         }
     });
 
@@ -168,7 +168,7 @@ async function main() {
         if (e.event === "projectLanguageServiceState" && !e.body.languageServiceEnabled) {
             console.log(`Language service disabled for ${e.body.projectName ? path.normalize(e.body.projectName) : "unknown project"}`);
             if (unattended) {
-                process.exit(-5);
+                process.exit(4);
             }
         }
     });
@@ -186,7 +186,7 @@ async function main() {
                 }
                 catch {
                 }
-                process.exit(request.seq || -4);
+                process.exit(5);
             }
 
             console.log(request);
