@@ -111,8 +111,12 @@ async function main() {
                     openFile.content = openFileContents;
                 }
             }
-            sawExit = sawExit || request.command === "exit";
-            requests.push(request);
+            // Drop exit requests in unattended mode - we need to tear down more explicitly
+            const isExit = request.command === "exit";
+            sawExit = sawExit || isExit;
+            if (!isExit || !unattended) {
+                requests.push(request);
+            }
         }
         catch {
             console.log(`Bad input "${line}"`);
@@ -126,9 +130,8 @@ async function main() {
     });
     await events.once(rl, 'close');
 
-    const synthesizedExitRequest = { "seq": 999999, "command": "exit" };
-    if (!sawExit) {
-        requests.push(synthesizedExitRequest);
+    if (!sawExit && !unattended) {
+        requests.push({ "seq": 999999, "command": "exit" });
     }
 
     if (traceDir) {
@@ -157,9 +160,9 @@ async function main() {
 
     server.on("exit", code => {
         if (!unattended || !exitRequested || code) {
-            console.log(`${exitRequested ? "Shut down" :"Exited unexpectedly"}${code ? ` with code ${code}` : ""}`);
+            console.log(`${exitRequested ? "Shut down" : "Exited unexpectedly"}${code ? ` with code ${code}` : ""}`);
         }
-        if (unattended) {
+        if (unattended && !exitRequested) {
             process.exit(3);
         }
     });
@@ -169,7 +172,7 @@ async function main() {
             console.log(`Language service disabled for ${e.body.projectName ? path.normalize(e.body.projectName) : "unknown project"}`);
             if (unattended) {
                 try {
-                    await server.message(synthesizedExitRequest);
+                    await exitOrKillServer();
                 }
                 catch {
                     // Ignore errors during shutdown
@@ -187,10 +190,10 @@ async function main() {
             if (unattended) {
                 console.log(JSON.stringify(response)); // Print on a single line - includes request seq and error message, if any
                 try {
-                    exitRequested = true;
-                    await server.message(synthesizedExitRequest);
+                    await exitOrKillServer();
                 }
                 catch {
+                    // Ignore errors during shutdown
                 }
                 process.exit(5);
             }
@@ -198,5 +201,17 @@ async function main() {
             console.log(request);
             console.log(response);
         }
+    }
+
+    if (unattended) {
+        if (!await exitOrKillServer()) {
+            // Server didn't exit cleanly and had to be killed
+            process.exit(6);
+        }
+    }
+
+    async function exitOrKillServer() {
+        exitRequested = true; // Suppress "exit" event handler
+        return await server.exitOrKill(5000);
     }
 }
