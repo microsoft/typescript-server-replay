@@ -158,6 +158,20 @@ async function main() {
     let exitRequested = false;
     const server = sh.launchServer(serverPath, serverArgs, nodeArgs);
 
+    // This is a bit of a hack, in that it's hyper-specific to our lab runs.
+    // Basically, replay gets launched in a child process with a timeout and
+    // receives SIGTERM if the timeout is hit.  In those circumstances, it's
+    // important to clean up the server process, so that it doesn't interfere
+    // with subsequent operations.
+    // NB: As of Node 16, SIGTERM never fires on Windows.
+    if (unattended) {
+        process.on("SIGTERM", () => {
+            exitRequested = true; // Shouldn't matter, but might as well
+            server.kill();
+            process.exit(7);
+        });
+    }
+
     server.on("exit", code => {
         if (!unattended || !exitRequested || code) {
             console.log(`${exitRequested ? "Shut down" : "Exited unexpectedly"}${code ? ` with code ${code}` : ""}`);
