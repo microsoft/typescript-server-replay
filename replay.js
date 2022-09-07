@@ -165,10 +165,11 @@ async function main() {
     // with subsequent operations.
     // NB: As of Node 16, SIGTERM never fires on Windows.
     if (unattended) {
-        process.on("SIGTERM", () => {
+        process.once("SIGTERM", () => {
             exitRequested = true; // Shouldn't matter, but might as well
             server.kill();
-            process.exit(7);
+            // This is a sneaky way to invoke node's default SIGTERM handler
+            process.kill(process.pid, "SIGTERM");
         });
     }
 
