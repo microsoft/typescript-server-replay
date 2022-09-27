@@ -2,7 +2,7 @@
   "name": "@typescript/server-replay",
   "author": "Microsoft Corp.",
   "homepage": "https://github.com/microsoft/typescript-server-replay#readme",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "license": "MIT",
   "description": "Replay server requests from a file",
   "keywords": [
@@ -28,7 +28,7 @@
     "build": "tsc -p jsconfig.json"
   },
   "dependencies": {
-    "@typescript/server-harness": "^0.3.2",
+    "@typescript/server-harness": "^0.3.3",
     "yargs": "^16.2.0"
   },
   "devDependencies": {

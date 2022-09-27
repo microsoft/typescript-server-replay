@@ -167,12 +167,20 @@ async function main() {
         }
     });
 
+    server.on("communicationError", async err => {
+        console.error(`Error communicating with server:\n${err}`);
+        exitRequested = true;
+        await server.kill();
+        process.exit(7);
+    });
+
     server.on("event", async e => {
         if (e.event === "projectLanguageServiceState" && !e.body.languageServiceEnabled) {
             console.log(`Language service disabled for ${e.body.projectName ? path.normalize(e.body.projectName) : "unknown project"}`);
             if (unattended) {
                 try {
-                    await exitOrKillServer();
+                    exitRequested = true; // Suppress "exit" event handler
+                    await server.kill();
                 }
                 catch {
                     // Ignore errors during shutdown
