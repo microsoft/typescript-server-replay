@@ -158,6 +158,16 @@ async function main() {
     let exitRequested = false;
     const server = sh.launchServer(serverPath, serverArgs, nodeArgs);
 
+    // On Linux, it's idiomatic to shut down your child processes when you receive SIGTERM.
+    // This helps us ensure clean teardown during lab runs.
+    // NB: As of Node 16, SIGTERM never fires on Windows.
+    process.once("SIGTERM", async () => {
+        exitRequested = true; // Shouldn't matter, but might as well
+        await server.kill();
+        // This is a sneaky way to invoke node's default SIGTERM handler
+        process.kill(process.pid, "SIGTERM");
+    });
+
     server.on("close", (code, signal) => {
         if (!unattended || !exitRequested || code || signal) {
             console.log(`${exitRequested ? "Shut down" : "Exited unexpectedly"}${code ? ` with code ${code}` : signal ? ` with signal ${signal}` : ""}`);
