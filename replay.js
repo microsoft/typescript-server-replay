@@ -32,7 +32,18 @@ const args = yargs(process.argv.slice(2))
                 describe: "Stop at the first sign of trouble and use line-oriented output",
                 type: "boolean",
             },
+            "s": {
+                alias: ["simple"],
+                describe: "Replay only file opening and closing, plus the final request",
+                type: "boolean",
+            },
+            "S": {
+                alias: ["superSimple", "super-simple"],
+                describe: "Replay only the final file opening and the final request",
+                type: "boolean",
+            },
         })
+        .conflicts("s", "S")
         .help("h").alias("h", "help")
         .strict())
     .argv;
@@ -48,6 +59,8 @@ const traceDir = args.t && canonicalizePath(args.t);
 const logDir = args.l && canonicalizePath(args.l);
 const inspectPort = args.i && +args.i;
 const unattended = !!args.u;
+const simple = !!args.s;
+const superSimple = !!args.S;
 
 /**
  * @param {string} p
@@ -79,7 +92,7 @@ async function main() {
 
     let firstLine = true;
     let sawExit = false;
-    const requests = [];
+    let requests = [];
 
 
     rl.on('line', line => {
@@ -105,7 +118,7 @@ async function main() {
                     openFile.fileContent = openFileContents;
                 }
             }
-            if (request.command === "applyChangedToOpenFiles") {
+            else if (request.command === "applyChangedToOpenFiles") {
                 for (const openFile of request.arguments.openFiles) {
                     const openFileContents = fs.readFileSync(openFile.fileName, { encoding: "utf-8" });
                     openFile.content = openFileContents;
@@ -130,8 +143,81 @@ async function main() {
     });
     await events.once(rl, 'close');
 
+    if (!requests.length) {
+        if (!unattended) {
+            console.log("No requests to replay");
+        }
+        process.exit(0);
+    }
+
     if (!sawExit && !unattended) {
         requests.push({ "seq": 999999, "command": "exit" });
+    }
+
+    if (simple) {
+        const newRequests = [];
+        let i = 0;
+        if (requests[i].command === "configure") {
+            newRequests.push(requests[i]);
+            i++;
+        }
+        let j = requests.length - 1;
+        if (requests[j].command === "exit") {
+            j--;
+        }
+
+        for (; i < j; i++) {
+            const req = requests[i];
+            if (req.command === "updateOpen" || req.command === "applyChangedToOpenFiles") {
+                if (req.arguments.openFiles?.length || req.arguments.closedFiles?.length) {
+                    newRequests.push(req);
+                }
+            }
+        }
+
+        for (j = Math.max(i, j); j < requests.length; j++) {
+            newRequests.push(requests[j]);
+        }
+
+        requests = newRequests;
+    }
+    else if (superSimple) {
+        const newRequests = [];
+
+        let h = 0;
+        if (requests[h].command === "configure") {
+            newRequests.push(requests[h]);
+            h++;
+        }
+
+        let i = requests.length - 1;
+        for (; i >= h; i--) {
+            const req = requests[i];
+            if (req.command === "updateOpen" || req.command === "applyChangedToOpenFiles") {
+                if (req.arguments.openFiles?.length) {
+                    // We're not opening other files, so changeFiles and closeFiles can only cause problems, if they're present
+                    req.arguments.changedFiles = [];
+                    req.arguments.closedFiles = [];
+                    newRequests.push(req);
+                    break;
+                }
+            }
+        }
+
+        // NB: i === h-1 if no file open request was found and i >= h-1 in all cases
+
+        let j = requests.length - 1;
+        if (requests[j].command === "exit") {
+            if (j - 1 > i) {
+                newRequests.push(requests[j - 1]);
+            }
+            newRequests.push(requests[j]);
+        }
+        else if (j > i) {
+            newRequests.push(requests[j]);
+        }
+
+        requests = newRequests;
     }
 
     if (traceDir) {
