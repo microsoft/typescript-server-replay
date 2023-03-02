@@ -283,9 +283,42 @@ async function main() {
         }
     });
 
+    /** @type {import("typescript/lib/protocol").CompletionInfoResponse | undefined} */
+    let lastCompletionsResponse;
+    let lastCompletionEntryDetailsIndex = -1;
+
     for (const request of requests) {
         exitRequested = exitRequested || request.command === "exit";
+
         if (!unattended) console.log(`${request.seq}\t${request.command}`);
+
+        if (request.command === "completionEntryDetails") {
+            let detailsRequest = /** @type {import("typescript/lib/protocol").CompletionDetailsRequest} */ (request);
+            // completionEntryDetails can be very specific to the session and original platform,
+            // and apparently some information in `data` might differ between what the server expects vs. what the replay script contains.
+            for (const replayEntry of detailsRequest.arguments.entryNames) {
+                if (typeof replayEntry !== "string" && replayEntry.source !== undefined && typeof replayEntry.data?.fileName === "string") {
+                    if (!lastCompletionsResponse) {
+                        console.error("Cannot run 'completionEntryDetails' with 'source' and 'data' without running a preceding 'completionInfo'.");
+                        await exitOrKillServer();
+                        process.exit(5);
+                    }
+
+                    const actualEntries = lastCompletionsResponse.body.entries;
+                    // Typically these will be sequential, but we might need to loop back around.
+                    lastCompletionEntryDetailsIndex = findSuitableCompletionEntryDetailAndReplaceData(lastCompletionEntryDetailsIndex, actualEntries, replayEntry);
+                    if (lastCompletionEntryDetailsIndex < 0) {
+                        lastCompletionEntryDetailsIndex = findSuitableCompletionEntryDetailAndReplaceData(lastCompletionEntryDetailsIndex, actualEntries, replayEntry);
+                        if (lastCompletionEntryDetailsIndex < 0) {
+                            console.error(`Could not find a suitable completion entry for ${replayEntry.name} based on the log replay log.`);
+                            await exitOrKillServer();
+                            process.exit(5);
+                        }
+                    }
+                }
+            }
+        }
+
         const response = await server.message(request);
         if (response && !response.success && response.message !== "No content available.") {
             if (unattended) {
@@ -296,18 +329,21 @@ async function main() {
                 catch {
                     // Ignore errors during shutdown
                 }
-                process.exit(5);
+                process.exit(7);
             }
 
             console.log(request);
             console.log(response);
+        }
+        else if (response?.command  === "completionInfo") {
+            lastCompletionsResponse = response;
         }
     }
 
     if (unattended) {
         if (!await exitOrKillServer()) {
             // Server didn't exit cleanly and had to be killed
-            process.exit(6);
+            process.exit(8);
         }
     }
 
@@ -315,4 +351,19 @@ async function main() {
         exitRequested = true; // Suppress "exit" event handler
         return await server.exitOrKill(5000);
     }
+}
+
+function findSuitableCompletionEntryDetailAndReplaceData(lastCompletionEntryDetailsIndex, actualEntries, replayEntry) {
+    for (let index = lastCompletionEntryDetailsIndex + 1; index < actualEntries.length; index++) {
+        const actualEntry = actualEntries[index];
+        if (actualEntry.name === replayEntry.name
+            && actualEntry.source === replayEntry.source
+            && actualEntry.exportName === replayEntry.exportName
+            && actualEntry.data?.fileName === replayEntry.data.fileName) {
+            // Replace the 'data'.
+            replayEntry.data = actualEntry.data;
+            return index;
+        }
+    }
+    return -1;
 }
