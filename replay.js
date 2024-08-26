@@ -234,6 +234,7 @@ async function main() {
     const nodeArgs = [
         "--max-old-space-size=4096",
         "--expose-gc",
+        "--stack-size=2048",
         // "--require=E:/tsserver-stress/node_modules/pprof-it/dist/index.js",
     ];
 
