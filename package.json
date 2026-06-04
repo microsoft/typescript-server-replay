@@ -2,7 +2,7 @@
   "name": "@typescript/server-replay",
   "author": "Microsoft Corp.",
   "homepage": "https://github.com/microsoft/typescript-server-replay#readme",
-  "version": "0.2.13",
+  "version": "0.3.0",
   "license": "MIT",
   "description": "Replay server requests from a file",
   "keywords": [
@@ -20,27 +20,48 @@
     "type": "git",
     "url": "git+https://github.com/microsoft/typescript-server-replay.git"
   },
-  "main": "./dist/replay.js",
-  "types": "./dist/replay.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./installPackages": {
+      "types": "./dist/installPackages.d.ts",
+      "default": "./dist/installPackages.js"
+    },
+    "./stradaReplay": {
+      "types": "./dist/stradaReplay.d.ts",
+      "default": "./dist/stradaReplay.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "tsreplay": "./bin/tsreplay.js"
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "SUPPORT.md"
   ],
   "scripts": {
     "build": "tsc"
   },
   "dependencies": {
     "@typescript/server-harness": "^0.3.4",
+    "yargs": "^16.2.0",
     "glob": "^10.5.0",
     "json5": "^2.2.3",
-    "yargs": "^16.2.0"
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/yargs": "^16.0.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "@types/js-yaml": "^4.0.9"
   }
 }

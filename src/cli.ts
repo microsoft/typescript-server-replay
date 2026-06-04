@@ -1,7 +1,7 @@
 import * as process from "process";
 import yargs from "yargs";
 import { runReplay } from "./stradaReplay.js";
-import { installDependencies } from "./installDeps.js";
+import { installDependencies } from "./installPackages.js";
 
 void yargs(process.argv.slice(2))
     .command(
@@ -62,16 +62,26 @@ void yargs(process.argv.slice(2))
         "install <project>",
         "Install dependencies for a repro project",
         yargs => yargs
+            .positional("project", { type: "string", desc: "location of directory containing repro project", demandOption: true })
             .options({
-                "p": {
-                    alias: ["project"],
-                    describe: "location of directory containing repro project",
-                    type: "string",
-                    demandOption: true,
+                "quietOutput": {
+                    describe: "Run install commands in quiet/silent mode",
+                    type: "boolean",
+                    default: false,
+                },
+                "recursiveSearch": {
+                    describe: "Recursively search directories for package.json files to install dependencies for",
+                    type: "boolean",
+                    default: true,
+                },
+                "timeout": {
+                    describe: "timeout for installing dependencies (ms)",
+                    type: "number",
+                    default: 10 * 60 * 1000,
                 },
             }),
         async args => {
-            await installDependencies(args.project);
+            await installDependencies(args.project, args.quietOutput, args.recursiveSearch, args.timeout);
         },
     )
     .help("h").alias("h", "help")
