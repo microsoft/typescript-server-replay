@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "skipLibCheck": true,
+        "module": "nodenext",
+        "outDir": "dist",
+        "rootDir": "src",
+        "declaration": true,
+    },
+    "exclude": ["dist"]
+}
