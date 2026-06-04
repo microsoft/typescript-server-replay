@@ -226,14 +226,14 @@ ${spawnResult.stdout.trim() || "No stdout"}\n${spawnResult.stderr.trim() || "No 
 /**
  * Returns true if the path exists.
  */
-export async function exists(path: string): Promise<boolean> {
+async function exists(path: string): Promise<boolean> {
     return new Promise(resolve => fs.exists(path, e => resolve(e)));
 }
 
 /**
  * `glob`, but ignoring node_modules and symlinks, and returning absolute paths.
  */
-export function glob(cwd: string, pattern: string): string[] {
+function glob(cwd: string, pattern: string): string[] {
     return globCps.sync(pattern, { cwd, absolute: true, ignore: "**/node_modules/**", follow: false })
 }
 
@@ -241,7 +241,7 @@ export function glob(cwd: string, pattern: string): string[] {
  * Heuristically returns a list of package.json paths in monorepo dependency order.
  * NB: Does not actually consume lerna.json.
  */
-export async function getMonorepoOrder(repoDir: string): Promise<readonly string[]> {
+async function getMonorepoOrder(repoDir: string): Promise<readonly string[]> {
     const yarnOrNpmLockFiles = glob(repoDir, "**/{yarn.lock,package-lock.json}");
     if (yarnOrNpmLockFiles.length) {
         const workspaceOrder: string[] = [];
@@ -369,7 +369,7 @@ async function appendOrderedMonorepoPackages(pkgPaths: string[], monorepoOrder: 
     }
 }
 
-export interface SpawnResult {
+interface SpawnResult {
     stdout: string,
     stderr: string,
     code: number | null,
@@ -377,7 +377,7 @@ export interface SpawnResult {
 }
 
 /** Returns undefined if and only if executions times out. */
-export function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly string[], timeoutMs: number, env?: {}): Promise<SpawnResult | undefined> {
+function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly string[], timeoutMs: number, env?: {}): Promise<SpawnResult | undefined> {
     console.log(`${cwd}> ${command} ${args.join(" ")}`);
     return new Promise<SpawnResult | undefined>((resolve, reject) => {
         if (timeoutMs <= 0) {
@@ -495,7 +495,7 @@ function cappedAppend(current: string, data: string): string {
     return hasTruncationMessage ? tail : TRUNCATION_MESSAGE + tail;
 }
 
-export async function execAsync(cwd: string, command: string): Promise<string> {
+async function execAsync(cwd: string, command: string): Promise<string> {
     return new Promise((resolve, reject) => {
         console.log(`${cwd}> ${command}`);
         cp.exec(command, { cwd }, (err, stdout, stderr) => {
