@@ -142,7 +142,7 @@ export async function getInstallPackagesCommands(repoDir: string, quietOutput: b
 }
 
 async function hasCurrentShrinkwrap(packageRoot: string): Promise<boolean> {
-    if (!exists(path.join(packageRoot, "npm-shrinkwrap.json"))) {
+    if (!await exists(path.join(packageRoot, "npm-shrinkwrap.json"))) {
         return false;
     }
     
@@ -159,7 +159,7 @@ async function hasCurrentShrinkwrap(packageRoot: string): Promise<boolean> {
 async function installPackages(repoDir: string, commands: readonly InstallCommand[], timeoutMs: number) {
     let usedYarn = false;
 
-    const installEnv: Record<string, string> = {
+    const installEnv: NodeJS.ProcessEnv = {
         ...process.env,
         // yarn2 produces extremely verbose output unless CI=true is set and it should be harmless for yarn1 and npm
         CI: "true",
@@ -309,24 +309,29 @@ async function getMonorepoOrder(repoDir: string): Promise<readonly string[]> {
 }
 
 interface Package {
-    meta_dir: string,
-    meta_state: "unvisited" | "visiting" | "visited",
     name: string,
     workspaces?: readonly string[] | { packages: readonly string[] },
-    dependencies?: readonly string[],
-    devDependencies?: readonly string[],
-    peerDependencies?: readonly string[],
+    dependencies?: Record<string, string>,
+    devDependencies?: Record<string, string>,
+    peerDependencies?: Record<string, string>,
+}
+
+interface MonorepoPackage extends Package {
+    meta_dir: string,
+    meta_state: "unvisited" | "visiting" | "visited",
 }
 
 async function appendOrderedMonorepoPackages(pkgPaths: string[], monorepoOrder: string[]) {
-    const pkgs = await Promise.all(pkgPaths.map(async (pkgPath) => {
+    const pkgs = await Promise.all(pkgPaths.map(async (pkgPath): Promise<MonorepoPackage> => {
         const contents = await fs.promises.readFile(pkgPath, { encoding: "utf-8" });
         const pkg: Package = json5.parse(contents);
-        pkg.meta_dir = path.dirname(pkgPath);
-        pkg.meta_state = "unvisited";
-        return pkg;
+        return {
+            ...pkg,
+            meta_dir: path.dirname(pkgPath),
+            meta_state: "unvisited",
+        };
     }));
-    const pkgMap: Record<string, Package | undefined> = {};
+    const pkgMap: Record<string, MonorepoPackage | undefined> = {};
     for (const pkg of pkgs) {
         pkgMap[pkg.name] = pkg;
     }
@@ -337,7 +342,7 @@ async function appendOrderedMonorepoPackages(pkgPaths: string[], monorepoOrder: 
         visit(pkg);
     }
 
-    function visit(pkg: Package): void {
+    function visit(pkg: MonorepoPackage): void {
         // "visiting" indicates a cycle, which some monorepo systems (e.g. lerna) allow
         if (pkg.meta_state !== "unvisited") return;
 
@@ -377,7 +382,7 @@ interface SpawnResult {
 }
 
 /** Returns undefined if and only if executions times out. */
-function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly string[], timeoutMs: number, env?: {}): Promise<SpawnResult | undefined> {
+function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly string[], timeoutMs: number, env?: NodeJS.ProcessEnv): Promise<SpawnResult | undefined> {
     console.log(`${cwd}> ${command} ${args.join(" ")}`);
     return new Promise<SpawnResult | undefined>((resolve, reject) => {
         if (timeoutMs <= 0) {
@@ -394,16 +399,32 @@ function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly stri
         });
 
         let timedOut = false;
+        let settled = false;
 
         let stdout = "";
         let stderr = "";
 
+        // If the process fails to spawn (e.g. command not found), `close` never fires, so handle
+        // `error` explicitly to ensure the promise always settles.
+        childProcess.once("error", err => {
+            if (!timedOut && !settled) {
+                settled = true;
+                clearTimeout(timeout);
+                reject(err);
+            }
+        });
+
         childProcess.once("close", (code, signal) => {
-            if (!timedOut) {
+            if (!timedOut && !settled) {
+                settled = true;
                 clearTimeout(timeout);
                 resolve({ stdout, stderr, code, signal });
             }
         });
+
+        // Decode chunks as strings so `cappedAppend` never has to deal with Buffers.
+        childProcess.stdout.setEncoding("utf-8");
+        childProcess.stderr.setEncoding("utf-8");
 
         childProcess.stdout.on("data", data => {
             stdout = cappedAppend(stdout, data);
@@ -414,7 +435,11 @@ function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly stri
         });
 
         const timeout = setTimeout(async () => {
+            if (settled) {
+                return;
+            }
             timedOut = true;
+            settled = true;
             await killTree(childProcess);
             resolve(undefined);
         }, timeoutMs | 0); // Truncate to int
@@ -422,7 +447,19 @@ function spawnWithTimeoutAsync(cwd: string, command: string, args: readonly stri
 }
 
 function killTree(childProcess: cp.ChildProcessWithoutNullStreams): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
+        // Best-effort kill of just the root process. Used as a fallback when we can't enumerate
+        // descendants, and as the final step once we have.
+        const killRoot = () => {
+            try {
+                childProcess.kill();
+            }
+            catch {
+                // The process may have already exited; nothing more we can do.
+                resolve();
+            }
+        };
+
         // Ideally, we would wait for all of the processes to close, but we only get events for
         // this one, so we'll kill it last and hope for the best.
         childProcess.once("close", () => {
@@ -431,7 +468,8 @@ function killTree(childProcess: cp.ChildProcessWithoutNullStreams): Promise<void
 
         cp.exec("ps -e -o pid,ppid --no-headers", (err, stdout) => {
             if (err) {
-                reject (err);
+                // `ps` may fail. Fall back to a best-effort kill of just the root process.
+                killRoot();
                 return;
             }
 
@@ -471,8 +509,15 @@ function killTree(childProcess: cp.ChildProcessWithoutNullStreams): Promise<void
 
             console.log(`Killing process ${childProcessPid} and its descendents: ${strictDescendentPids.join(", ")}`);
 
-            strictDescendentPids.forEach(pid => process.kill(pid));
-            childProcess.kill();
+            for (const pid of strictDescendentPids) {
+                try {
+                    process.kill(pid);
+                }
+                catch {
+                    // Best effort - the process may have already exited or be inaccessible.
+                }
+            }
+            killRoot();
             // Resolve when we detect that childProcess has closed (above)
         });
     });
