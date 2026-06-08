@@ -1,98 +1,65 @@
-const sh = require("@typescript/server-harness");
-const fs = require("fs");
-const process = require("process");
-const path = require("path");
-const readline = require("readline");
-const events = require("events");
-const yargs = require("yargs");
+import * as sh from "@typescript/server-harness";
+import * as fs from "fs";
+import * as process from "process";
+import * as path from "path";
+import * as readline from "readline";
+import * as events from "events";
 
-const args = yargs(process.argv.slice(2))
-    .command("$0 <project> <requests> <server>", "Replay a fuzzer repro", yargs => yargs
-        .positional("project", { type: "string", desc: "location of directory containing repro project" })
-        .positional("requests", { type: "string", desc: "location of file containing server request stubs" })
-        .positional("server", { type: "string", desc: "location of tsserver.js" })
-        .options({
-            "t": {
-                alias: ["traceDir", "trace-dir"],
-                describe: "Enable tsserver tracing and write outputs to specified directory",
-                type: "string",
-            },
-            "l": {
-                alias: ["logDir", "log-dir"],
-                describe: "Enable tsserver logging and write log to specified directory",
-                type: "string",
-            },
-            "i": {
-                alias: ["inspectPort", "inspect-port"],
-                describe: "Enable --inspect-brk on the specified port",
-                type: "number",
-            },
-            "u": {
-                alias: ["unattended"],
-                describe: "Stop at the first sign of trouble and use line-oriented output",
-                type: "boolean",
-            },
-            "s": {
-                alias: ["simple"],
-                describe: "Replay only file opening and closing, plus the final request",
-                type: "boolean",
-            },
-            "S": {
-                alias: ["superSimple", "super-simple"],
-                describe: "Replay only the final file opening and the final request",
-                type: "boolean",
-            },
-        })
-        .conflicts("s", "S")
-        .help("h").alias("h", "help")
-        .strict())
-    .argv;
+export interface ReplayOptions {
+    /** Location of directory containing repro project. */
+    project: string;
+    /** Location of file containing server request stubs. */
+    requests: string;
+    /** Location of tsserver.js. */
+    server: string;
+    /** Enable tsserver tracing and write outputs to specified directory. */
+    traceDir?: string;
+    /** Enable tsserver logging and write log to specified directory. */
+    logDir?: string;
+    /** Enable --inspect-brk on the specified port. */
+    inspectPort?: number;
+    /** Stop at the first sign of trouble and use line-oriented output. */
+    unattended?: boolean;
+    /** Replay only file opening and closing, plus the final request. */
+    simple?: boolean;
+    /** Replay only the final file opening and the final request. */
+    superSimple?: boolean;
+}
 
-// @ts-ignore yargs prevents undefined
-const testDir = canonicalizePath(args.project);
-// @ts-ignore yargs prevents undefined
-const requestsPath = canonicalizePath(args.requests);
-// @ts-ignore yargs prevents undefined
-const serverPath = canonicalizePath(args.server);
-
-const traceDir = args.t && canonicalizePath(args.t);
-const logDir = args.l && canonicalizePath(args.l);
-const inspectPort = args.i && +args.i;
-const unattended = !!args.u;
-const simple = !!args.s;
-const superSimple = !!args.S;
-
-/**
- * @param {string} p
- */
-function canonicalizePath(p) {
+export function canonicalizePath(p: string): string {
     // Resolve relative paths now, before we chdir
     // Match the slashes used in server requests
     return path.resolve(p).replace(/\\/g, "/");
 }
 
-// Needed for excludedDirectories
-process.chdir(testDir);
+export async function runReplay(options: ReplayOptions): Promise<void> {
+    const testDir = canonicalizePath(options.project);
+    const requestsPath = canonicalizePath(options.requests);
+    const serverPath = canonicalizePath(options.server);
 
-main().catch(e => {
-    console.log(e);
-    process.exit(1);
-});
+    const traceDir = options.traceDir && canonicalizePath(options.traceDir);
+    const logDir = options.logDir && canonicalizePath(options.logDir);
+    const inspectPort = options.inspectPort && +options.inspectPort;
+    const unattended = !!options.unattended;
+    const simple = !!options.simple;
+    const superSimple = !!options.superSimple;
 
-async function main() {
+    // Needed for excludedDirectories
+    process.chdir(testDir);
+
     const rl = readline.createInterface({
         input: fs.createReadStream(requestsPath),
         crlfDelay: Infinity,
     });
 
     let rootDirPlaceholder = "@PROJECT_ROOT@";
-    let serverArgs = [
+    let serverArgs: string[] = [
         "--disableAutomaticTypingAcquisition",
     ];
 
     let firstLine = true;
     let sawExit = false;
-    let requests = [];
+    let requests: any[] = [];
 
 
     rl.on('line', line => {
@@ -141,7 +108,7 @@ async function main() {
             firstLine = false;
         }
     });
-    await events.once(rl, 'close');
+    await events.EventEmitter.once(rl, 'close');
 
     if (!requests.length) {
         if (!unattended) {
@@ -155,7 +122,7 @@ async function main() {
     }
 
     if (simple) {
-        const newRequests = [];
+        const newRequests: any[] = [];
         let i = 0;
         if (requests[i].command === "configure") {
             newRequests.push(requests[i]);
@@ -182,7 +149,7 @@ async function main() {
         requests = newRequests;
     }
     else if (superSimple) {
-        const newRequests = [];
+        const newRequests: any[] = [];
 
         let h = 0;
         if (requests[h].command === "configure") {
@@ -312,7 +279,7 @@ async function main() {
         }
     }
 
-    async function exitOrKillServer() {
+    async function exitOrKillServer(): Promise<boolean> {
         exitRequested = true; // Suppress "exit" event handler
         return await server.exitOrKill(5000);
     }
