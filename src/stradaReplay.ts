@@ -215,7 +215,7 @@ export async function runReplay(options: ReplayOptions): Promise<void> {
     // On Linux, it's idiomatic to shut down your child processes when you receive SIGTERM.
     // This helps us ensure clean teardown during lab runs.
     // NB: As of Node 16, SIGTERM never fires on Windows.
-    process.once("SIGTERM", async () => {
+    global.process.once("SIGTERM", async () => {
         exitRequested = true; // Shouldn't matter, but might as well
         await server.kill();
         // This is a sneaky way to invoke node's default SIGTERM handler
